@@ -13,9 +13,11 @@ A async coroutine script for gelbooru API and download.
  - Save detailed gelbooru tags txt concurrently | 下载图片同时保存详细的gelbooru tags
  - Get gelbooru tags without downloading duplicate images | 已经存在图片但无tags文本，会自动补全
 
-[Scrape_images](./docs/Scrape_images.png)
+### 并发下载，（用jupyter演示）
+![Scrape_images](./docs/Scrape_images.png)
 
-[GetAPI](./docs/GetAPI.png)
+### API查询
+![GetAPI](./docs/GetAPI.png)
 
 ## Credit
 ### **Attention! It's probably against [Gelbooru's TOS](https://gelbooru.com/tos.php)!**
@@ -57,9 +59,10 @@ await Scrape_images(tags, max_images_number, download_dir, max_workers=max_worke
 tags: str  为批量下载的图片tags，应符合gelbooru的查询规则
 max_images_number: int  为下载图片数量
 download_dir: str  为下载的目录，这个目录可以不存在，会自动新建
-max_workers: int  为最大协程下载数
-unit: int  下载单位，下载图片数以此向上取一单位
-timeout: int  为下载超时限制，设置为None则不限时
+可选
+max_workers: int  为最大协程下载数 | 默认为10
+unit: int  下载单位，下载图片数以此向上取一单位 | 默认为100
+timeout: int  为下载超时限制（单位秒），设置为None则不限时 | 默认为10
 """
 ```
 **注意，只有在Ipython或者Jupyter里可以直接使用`await func()`**
@@ -76,7 +79,7 @@ timeout: int  为下载超时限制，设置为None则不限时
 *所有的函数都采用异步协程的方式编写*
 
  - 2个基础类
-   - `class Download` : 用于单个连接的文件请求，md5重复校验，tags写入
+   - `class Downloader` : 用于单个连接的文件请求，md5重复校验，tags写入
    - `class GetAPI` : 用于通过指定tags，pid页数来查询gelbooru的公共API，返回一个pandas.DataFrame
  - `async def launch_executor` : 协程池调度器，采用异步协程的方式自动调度 `class Download` 完成查询和下载
  - `async def Scrape_images` : 最顶层的封装，调用上面三个函数和类，实现指定tags和数量的图片下载
@@ -92,8 +95,9 @@ get_api = GetAPI()
 await get_api.get_api(tags, limit=100, pid=0)
 """
 tags: int  为你要查询的tags字符串
-limit: int  为一次查询的post数，最大只能为100
-pid: int  为查询的第几页，如果超出最大页数则查询不到结果
+可选
+limit: int  为一次查询的post数，最大只能为100 | 默认为100
+pid: int  为查询的第几页，如果超出最大页数则查询不到结果 | 默认为0
 """
 
 # 成功查询会返回一个pandas.DataFrame，查询不到就返回None
@@ -102,16 +106,20 @@ pid: int  为查询的第几页，如果超出最大页数则查询不到结果
 ### `class Downloader`
 ```python
 # 实例化下载器
-downloader = Downloader(timeout=10)
-""" timeout:int 为下载超时限制，设置为None则不限时 """
+downloader = Downloader(timeout=None)
+""" 
+可选
+timeout:int 为下载超时限制(单位秒)，设置为None则不限时 | 默认为None 
+"""
 
 # 异步下载文件
 await downloader.download(download_dir, file_url, file_name=file_name, tags=tags, md5=md5)
 """
 download_dir: str  为下载的目录，这个目录必须存在，否则报错
 file_url: str  为下载直连，访问头是httpx的默认头
+可选
 file_name: str  指定下载名字，如果不提供，则自动取file_url的basename
-tags: str  下载时会一起新建的同名txt，里面内容为tags，如果不提供则不会新建
+tags: str  下载时会自动新建同名txt，里面写入内容为tags，如果不提供则不会新建txt
 md5: str  下载时，如果存在同名文件，则会将文件与提供的md5进行对比判断是否重复，如果不提供则不校验
 """
 
@@ -126,7 +134,8 @@ await launch_executor(files_df, download_dir, max_workers=10, timeout=10)
 """
 files_df: pandas.DataFrame  为GetAPI查询到的pandas.DataFrame
 download_dir: str  为下载的目录，这个目录必须存在，否则报错
-max_workers: int  为最大协程下载数
-timeout:int  为下载超时限制，设置为None则不限时
+可选
+max_workers: int  为最大协程下载数 | 默认为10
+timeout:int  为下载超时限制，设置为None则不限时 | 默认为10
 """
 ```
