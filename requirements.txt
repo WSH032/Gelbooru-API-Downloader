@@ -1,0 +1,7 @@
+# for all
+tqdm
+pandas
+
+# for download
+httpx
+aiofiles
