@@ -3,15 +3,21 @@ A async coroutine script for gelbooru API and download.
 
 一个采用异步协程，用于通过指定tags关键词访问gelbooru公共API，并下载图片的脚本
 
+对于SD训练很有用
+
 ## 现在我们有什么？
 输入你想要的tags关键词，自动查询Gelbooru的API，然后采用异步协程方式，并发下载图片，同时会把gelbooru上图片的详细tags一同保存
 特点：
  - Download automatically | 自动化下载
+ - Download images with tag | 下载图片和tags
  - MD5, Say no to duplication | 重复文件md5校验
  - Asyncio and coroutine, fast | 协程异步并发写入和下载
  - httpx and aiofiles | 全部采用协程，不包含任何同步阻塞操作
  - Save detailed gelbooru tags txt concurrently | 下载图片同时保存详细的gelbooru tags
  - Get gelbooru tags without downloading duplicate images | 已经存在图片但无tags文本，会自动补全
+
+### powershell一键运行
+![use_in_powershell](./docs/use_in_powershell.png)
 
 ### 并发下载，（用jupyter演示）
 ![Scrape_images](./docs/Scrape_images.png)
@@ -31,8 +37,15 @@ A async coroutine script for gelbooru API and download.
 **如果你觉得这个脚本有用，你应该感谢gelbooru的无私贡献
 你可以以[捐赠或者购买商品的形式](https://buymyshit.moneygrubbingwhore.com/index.php?page=products&s=list)支持他们**
 
+## todo
+- [ ] 增加更多booru支持
+- [ ] 增加对pixiv的支持
+- [ ] 增加是否覆盖tags文本选项
+
 ## 安装
 **请保证 `python>=3.9`**
+
+**中国用户访问gelbooru请自行使用系统代理**
 
 运行 `install.ps1` 完成venv虚拟环境的创建和依赖的安装
 或者:
