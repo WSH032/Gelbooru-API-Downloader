@@ -257,10 +257,10 @@ class GetAPI(object):
         }
 
         #获取初始化参数
-        base_url = self.param.get("base_url")
-        base_url_params = self.param.get("base_url_params")
+        base_url = self.param["base_url"]
+        base_url_params = self.param["base_url_params"]
         # 如果初始化的时候没传入异步客户端，就新建一个； 如果传了，就用传入的
-        async_client = httpx.AsyncClient() if self.param.get("async_client") is None else self.param.get("async_client")
+        async_client = httpx.AsyncClient() if self.param["async_client"] is None else self.param["async_client"]
 
         try:
             response = await async_client.get( base_url, params=base_url_params|api_param )
@@ -388,6 +388,9 @@ async def Scrape_images(tags :str,
                         max_workers :int=10,
                         unit: int=100,
                         timeout :int=10,
+                        add_comma :bool=True,
+                        remove_underscore: bool=True,
+                        use_escape: bool=True,
                         base_url=None,
                         base_url_params=None,
                         show_url_params=None,
@@ -401,6 +404,9 @@ async def Scrape_images(tags :str,
     max_workers为下载线程
     unit为下载块单位，最小为1，最大为100
     timeout为单个图片下载超时限制，单位为秒
+    add_comma为是否在tag字符串中添加逗号
+    remove_underscore为是否将下划线换成空格
+    use_escape为是否对'(' ')'进行转义为'\\(' '\\)'
     
     无返回值
     """
@@ -423,7 +429,7 @@ async def Scrape_images(tags :str,
     # 尝试用ipython展示markdown连接
     show_url = base_url + '?' + urlencode( show_url_params|{"tags":tags} )
     try:
-        from IPython.display import display, Markdown
+        from IPython.display import display, Markdown  # type: ignore
         display(Markdown(f"[点击检查图片是否正确]({show_url})"))
     except Exception:
         pass
@@ -508,6 +514,34 @@ async def Scrape_images(tags :str,
             files_df = await get_api.get_api(tags, limit=limit, pid=i)
             
             if files_df is not None:
+
+                def process_tags(tags: str,
+                                add_comma: bool=True,
+                                remove_underscore: bool=True,
+                                use_escape: bool=True,
+                ) -> str:
+                    """处理tags字符串，返回处理后的字符串"""
+                    tag_list = tags.split(" ")
+                    # 忽略emoji，将_替换为空格
+                    if remove_underscore:
+                        for i, tag in enumerate(tag_list):
+                            if len(tag) > 3:  # ignore emoji tags like >_< and ^_^
+                                tag_list[i] = tag.replace("_", " ")
+                    # 转义正则表达式特殊字符
+                    if use_escape:
+                        for i, tag in enumerate(tag_list):
+                            if len(tag) > 3:  # ignore emoji tags like >_< and ^_^
+                                tag_list[i] = tag.replace("(", "\\(").replace(")", "\\)")
+                    # 添加', '分割或者' '分割
+                    final_tags = ", ".join(tag_list) if add_comma else " ".join(tag_list)
+                    return final_tags
+                
+                files_df["tags"] = files_df["tags"].apply(process_tags,
+                                                          add_comma=add_comma,
+                                                          remove_underscore=remove_underscore,
+                                                          use_escape=use_escape,
+                                                    )
+
                 res = await launch_executor(files_df, download_dir, max_workers=max_workers, timeout=timeout, async_client=async_client)
                 download_info_counter.update( res )
             else:
@@ -531,8 +565,14 @@ if __name__ == "__main__":
     parser.add_argument("--max_workers", type=int, default=15, help="最大协程工作数")
     parser.add_argument("--unit", type=int, default=50, help="下载单位，图片数量以此向上取一单位")
     parser.add_argument("--timeout", type=int, default=10, help="连接超时限制")
+    parser.add_argument("--add_comma", action="store_true", help="是否在tags之间添加逗号")
+    parser.add_argument("--remove_underscore", action="store_true", help="是否将tags中的下划线替换为空格")
+    parser.add_argument("--use_escape", action="store_true", help="是否转义正则表达式特殊字符")
 
     cmd_param, unknown = parser.parse_known_args()
+
+    if unknown:
+        logging.error(f"以下输入参数非法，将被忽略：\n{unknown}")
 
     tags = cmd_param.tags
     max_images_number = cmd_param.max_images_number
@@ -540,7 +580,19 @@ if __name__ == "__main__":
     max_workers = cmd_param.max_workers
     unit = cmd_param.unit
     timeout = cmd_param.timeout
+    add_comma = cmd_param.add_comma
+    remove_underscore = cmd_param.remove_underscore
+    use_escape = cmd_param.use_escape
     
-    Scrape_images_coroutine = Scrape_images(tags, max_images_number, download_dir, max_workers=max_workers, unit=unit, timeout=timeout)
+    Scrape_images_coroutine = Scrape_images(tags,
+                                            max_images_number,
+                                            download_dir,
+                                            max_workers=max_workers,
+                                            unit=unit,
+                                            timeout=timeout,
+                                            add_comma=add_comma,
+                                            remove_underscore=remove_underscore,
+                                            use_escape=use_escape,
+    )
     
     asyncio.run( Scrape_images_coroutine )

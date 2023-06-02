@@ -5,6 +5,10 @@ $max_workers= 15    # 最大下载协程数 | maximum number of download corouti
 $unit = 100    # 下载单位，下载图片数以此向上取一单位 | unit for download. eg: max_images_number=11, unit=10, then you get 20
 $timeout = 10    # 下载超时限制 | download connecting timeout limit
 
+$add_comma = 1    # 是否用逗号分割tags | whether to use comma to split tags
+$remove_underscore = 1    # 是否移除tags中的下划线 | whether to remove underscore in tags
+$use_escape = 1    # 是否对括号进行转义 | whether to escape parentheses
+
 
 ##########  你可以在这找到tags规则 some useful info for tags   ##########
 <# 
@@ -17,12 +21,25 @@ $timeout = 10    # 下载超时限制 | download connecting timeout limit
 ##########  下载脚本 do not edit  ##########
 .\venv\Scripts\activate
 
+$ext_args = [System.Collections.ArrayList]::new()
+
+if ($add_comma) {
+  [void]$ext_args.Add("--add_comma")
+}
+if ($remove_underscore) {
+  [void]$ext_args.Add("--remove_underscore")
+}
+if ($use_escape) {
+  [void]$ext_args.Add("--use_escape")
+}
+
 python download_images_coroutine.py `
   --tags=$tags `
   --max_images_number=$max_images_number `
   --download_dir=$download_dir `
   --max_workers=$max_workers `
   --unit=$unit `
-  --timeout=$timeout
+  --timeout=$timeout `
+  $ext_args
   
 pause
