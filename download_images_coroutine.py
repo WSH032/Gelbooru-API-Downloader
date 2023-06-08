@@ -6,6 +6,7 @@ Created on Fri May 19 23:26:50 2023
 """
 
 
+from utils.check_images import check_images
 import httpx
 import aiofiles
 import aiofiles.os
@@ -18,6 +19,7 @@ import pandas as pd
 from urllib.parse import urlencode
 import math
 import argparse
+from typing import List, Tuple, Dict, Any, Union, Callable
 
 ##############################
 # 下载类 Downloader
@@ -391,6 +393,7 @@ async def Scrape_images(tags :str,
                         add_comma :bool=True,
                         remove_underscore: bool=True,
                         use_escape: bool=True,
+                        check_images_mode: Union[None, int]=None,
                         base_url=None,
                         base_url_params=None,
                         show_url_params=None,
@@ -407,6 +410,11 @@ async def Scrape_images(tags :str,
     add_comma为是否在tag字符串中添加逗号
     remove_underscore为是否将下划线换成空格
     use_escape为是否对'(' ')'进行转义为'\\(' '\\)'
+    check_images_mode为是否在下载结束后检查图片是否正确
+        默认为None，不检查
+        0为检查，但只输出信息不做任何操作
+        1为尝试修复图片
+        2为尝试删除图片
     
     无返回值
     """
@@ -551,6 +559,14 @@ async def Scrape_images(tags :str,
         download_info_counter.print()
 
 
+        if check_images_mode not in [0, 1, 2, None]:
+            logging.warning("check_images_mode 参数错误，其值将被置为None，且不进行检查")
+            check_images_mode = None
+        # 是否删除下载失败的图片
+        if check_images_mode is not None:
+            delete_list = await asyncio.to_thread(check_images, download_dir, max_workers=None, mode=check_images_mode, debug=True)
+
+
 ##############################
 # 命令行脚本
 if __name__ == "__main__":
@@ -568,6 +584,7 @@ if __name__ == "__main__":
     parser.add_argument("--add_comma", action="store_true", help="是否在tags之间添加逗号")
     parser.add_argument("--remove_underscore", action="store_true", help="是否将tags中的下划线替换为空格")
     parser.add_argument("--use_escape", action="store_true", help="是否转义正则表达式特殊字符")
+    parser.add_argument("--check_images_mode", type=int, default=None, help="None为不检查，0表示只检查并输出信息而不做任何操作，1表示检查并尝试修复图片，2表示检查并删除无法读取的图片")
 
     cmd_param, unknown = parser.parse_known_args()
 
@@ -583,6 +600,7 @@ if __name__ == "__main__":
     add_comma = cmd_param.add_comma
     remove_underscore = cmd_param.remove_underscore
     use_escape = cmd_param.use_escape
+    check_images_mode = cmd_param.check_images_mode
     
     Scrape_images_coroutine = Scrape_images(tags,
                                             max_images_number,
@@ -593,6 +611,7 @@ if __name__ == "__main__":
                                             add_comma=add_comma,
                                             remove_underscore=remove_underscore,
                                             use_escape=use_escape,
+                                            check_images_mode=check_images_mode,
     )
     
     asyncio.run( Scrape_images_coroutine )

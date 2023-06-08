@@ -9,6 +9,10 @@ $add_comma = 1    # 是否用逗号分割tags | whether to use comma to split ta
 $remove_underscore = 1    # 是否移除tags中的下划线 | whether to remove underscore in tags
 $use_escape = 1    # 是否对括号进行转义 | whether to escape parentheses
 
+# 是否进行图片检查，-1为不检查，0为检查但只展示错误信息，1为检查并修复图片，2为检查并删除错误图片 |
+# whether to check images, -1 for not checking, 0 for only showing error messages, 1 for trying to fix images, 2 for deleting error images
+$check_images_mode = -1
+
 
 ##########  你可以在这找到tags规则 some useful info for tags   ##########
 <# 
@@ -31,6 +35,9 @@ if ($remove_underscore) {
 }
 if ($use_escape) {
   [void]$ext_args.Add("--use_escape")
+}
+if ($check_images_mode -ge 0) {
+  [void]$ext_args.Add("--check_images_mode=$check_images_mode")
 }
 
 python download_images_coroutine.py `

@@ -53,6 +53,28 @@ A async coroutine script for gelbooru API and download.
 pip install -r requirements.txt
 ```
 
+## Change History
+如果你不会使用git命令，可以运行`update.ps1`完成更新
+### 8 Jun.2023 2023/06/
+**新增了pillow库的要求，请重新运行`install.ps1`更新依赖**
+
+new:
+ - 增加检查下载目录中错误图片的功能[1#issue](https://github.com/WSH032/Gelbooru-API-Downloader/issues/1)
+   - 下载时候的使用方法请看[run_download_images_coroutine.ps1](run_download_images_coroutine.ps1)
+   - 你也做为单独的工具脚本使用，请看[utils\run_check_images.ps1](utils\run_check_images.ps1)
+   - API方式
+      ```python
+      await Scrape_images(*arg,**kwargs,
+      check_images_mode: Union[None, int]=None,  # 新增参数
+      )
+      # check_images_mode为是否在下载结束后检查图片是否正确
+      #   默认为None，不检查
+      #   0为检查，但只输出信息不做任何操作
+      #   1为尝试修复图片
+      #   2为尝试删除图片
+      ```
+
+
 ## 使用方式
 ### 脚本方式(推荐)
 在windows环境中，修改 `run_download_images_coroutine.ps1` 中内容，powershell运行即可。
@@ -67,15 +89,20 @@ $timeout = 10    # 下载超时限制 | download connecting timeout limit
 
 ### API方式(请用import导入此脚本)
 ```python
-await Scrape_images(tags, max_images_number, download_dir, max_workers=max_workers, unit=unit, timeout=timeout)
+await Scrape_images(tags, max_images_number, download_dir, max_workers=max_workers, unit=unit, timeout=timeout, check_images_mode=check_images_mode)
 """
-tags: str  为批量下载的图片tags，应符合gelbooru的查询规则
-max_images_number: int  为下载图片数量
-download_dir: str  为下载的目录，这个目录可以不存在，会自动新建
+ - tags: str  为批量下载的图片tags，应符合gelbooru的查询规则
+ - max_images_number: int  为下载图片数量
+ - download_dir: str  为下载的目录，这个目录可以不存在，会自动新建
 可选
-max_workers: int  为最大协程下载数 | 默认为10
-unit: int  下载单位，下载图片数以此向上取一单位 | 默认为100
-timeout: int  为下载超时限制（单位秒），设置为None则不限时 | 默认为10
+ - max_workers: int  为最大协程下载数 | 默认为10
+ - unit: int  下载单位，下载图片数以此向上取一单位 | 默认为100
+ - timeout: int  为下载超时限制（单位秒），设置为None则不限时 | 默认为10
+ - check_images_mode: Union[None, int]  为是否在下载结束后检查图片是否正确
+   默认为None，不检查
+   0为检查，但只输出信息不做任何操作
+   1为尝试修复错误图片，保留未截断部分
+   2为尝试删除错误图片
 """
 ```
 **注意，只有在Ipython或者Jupyter里可以直接使用`await func()`**

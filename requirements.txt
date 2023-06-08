@@ -5,3 +5,6 @@ pandas
 # for download
 httpx
 aiofiles
+
+# for check_images
+pillow
