@@ -19,10 +19,67 @@ import pandas as pd
 from urllib.parse import urlencode
 import math
 import argparse
-from typing import List, Tuple, Dict, Any, Union, Callable
+from typing import List, Tuple, Dict, Any, Union, Callable, Optional
+import time
 
 ##############################
-# 下载类 Downloader
+class DownloadResult(object):
+    """用于记录Downloader.download下载的结果"""
+    # 可能需要补上一个url属性，以后再说
+    def __init__(self,
+                 state: int,
+                 path: str,
+                 start_time: Union[float, int, None]=None,
+                 end_time: Union[float, int, None]=None,
+                 size: Optional[int]=None,
+                 tags: Optional[str]=None,
+                 md5: Optional[str]=None,
+        ):
+        """
+        state : 下载结果
+        path : 下载的文件路径
+        start_time  : 下载开始时间戳，单位为秒
+        end_time  : 下载结束时间戳，单位为秒
+        size : 下载的文件大小,单位为字节；是确实下载的文件大小，如果重复文件，则应该为0
+        tags : 下载的tags内容
+        md5 : 下载的文件的md5值
+        """
+        self.state = state
+        self.path = path
+        self.start_time = start_time 
+        self.end_time = end_time
+        self.size = size
+        self.tags = tags
+        self.md5 = md5
+
+    def __eq__(self, other):
+        """ 为了向前兼容，方便用 DownloadResult() == 1 等判断下载结果 """
+        if isinstance(other, DownloadResult):
+            return self.state == other.state
+        elif isinstance(other, int):
+            return self.state == other
+        else:
+            raise TypeError(f"unsupported operand type(s) for ==: '{type(self)}' and '{type(other)}'")
+    
+    def __bool__(self):
+        """ 为了向前兼容，方便用 if DownloadResult() 等判断下载结果 """
+        return bool(self.state)
+
+    def __str__(self):
+        return f"\
+DownloadResult(state={self.state}, \
+path={self.path}, \
+start_time={self.start_time}, \
+end_time={self.end_time}, \
+size={self.size}, \
+tags={self.tags}, \
+md5={self.md5})"
+
+    def __repr__(self):
+        return self.__str__()
+
+
+### 下载类 Downloader ###
 class Downloader(object):
 
     def __init__(self,
@@ -71,7 +128,7 @@ class Downloader(object):
                         file_name=None,
                         tags=None,
                         md5=None,
-    ):
+    ) -> DownloadResult:
         """
         下载文件和将tags写入文本
 
@@ -80,11 +137,14 @@ class Downloader(object):
         file_name : 文件名字，留空则使用下载连接basename
         tags : tags字符串，留空则不保存tags文本
         md5 : 文件的md5字符串,留空则不进行重复哈希校验
-        
-        下载失败就返回0
-        下载成功返回1
-        已有重复文件返回2
+
+        返回一个DownloadResult对象，记录下载结果
         （无论是否有重复有文件，tags都会被重写一次）
+        下载结果：
+            下载失败就返回0
+            下载成功返回1
+            已有重复文件返回2
+            遇到异常会引发一个Exception
         """
         
         # 如果没提供文件名，就用url中的basename
@@ -195,21 +255,49 @@ class Downloader(object):
                 task_list.append(tags_task)
             
             # 同步等待任务完成
+            wait_start = time.time()
             task_result_list = await asyncio.gather( *task_list, return_exceptions=True )
+            wait_end = time.time()
 
-            # 如果结果不都为1，即返回了0或者异常。 就返回0
-            for result in task_result_list:
-                if result != 1 :
+            def judge_download_state(task_result_list: list):
+                
+                # 如果结果不都为1，即返回了0或者异常。 就返回0
+                if [result for result in task_result_list if result != 1 ]:
                     return 0
-            # 任务都正常，如果存在重复而没下载图片。 则返回2
-            if is_duplicate:
-                return 2
-            # 上述两种情况都没发生，说明正常下载了图片和tags。 返回1
-            return 1
+                
+                # 在1不成时，如果只有一个任务，说明存在重复文件而没下载图片。返回2
+                if len(task_result_list) == 1:
+                    return 2
+
+                # 上述两种情况都没发生，说明正常下载了图片和tags。 返回1
+                return 1
+            
+            state = judge_download_state(task_result_list)
+
+            # 如果存在重复文件，说明根本没下载，下载量自然为0
+            if state == 2:
+                size = 0
+            # 成功下载；或者错误，但是可能也下载了一部分，所以也返回文件大小
+            else:
+                 # 如果文件存在，获取文件大小，否则就是0
+                try:
+                    size = await aiofiles.os.path.getsize(file_path)
+                except:
+                    size = 0
+            
+            download_result = DownloadResult(state = state,
+                                            path = file_path,
+                                            start_time = wait_start,
+                                            end_time = wait_end,
+                                            size = size,
+                                            tags = tags,
+                                            md5 = md5,
+                                )
+            return download_result
         
+        # 遇到异常
         except Exception as e:
-            logging.error(f"创建 {file_name} 协程任务时发生错误, error: {e}")
-            return 0
+            raise Exception(f"创建 {file_name} 协程任务时发生错误, error: {e}") from e
         
         finally:
             if semaphore is not None:
@@ -291,6 +379,74 @@ class GetAPI(object):
 
 
 ##############################
+# 计算下载速度，会被launch_executor使用
+class DownloadSpeed(object):
+    """ 根据n个记录点和初始点，计算瞬时和平均下载速度 """
+    def __init__(self,
+                 n: int,
+                 data_size_init: int=0,
+                 time_init: float=0,
+        ):
+        """
+        n为计算平均的数据个数
+        data_size_init为开始之前下载量
+        time_init为开始时间戳
+        """
+        self._n = n
+        self._data_size_init = data_size_init
+        self._time_init = time_init
+
+        # 注意，这里需要计算n个数据，并且需要一个初始点，所以需要n+1个数据
+        self._data = [ (self._data_size_init, self._time_init) for i in range(self._n + 1) ]
+        self._instant_speed = 0  # 初始瞬时速度为0
+        self._average_speed = 0  # 初始平均速度为0
+    
+    def set_init(self,
+                 data_size_init: Optional[int]=None,
+                 time_init: Optional[float]=None,
+        ):
+        """
+        将数据状态重置为初始
+        
+        如有需要，可以改变以下参数：
+        data_size_init为需要修改的开始之前下载量
+        time_init为需要修改的开始时间戳
+        """
+
+        # 调用__init__重新初始化
+        # 如果没有传入参数，就使用原来的参数
+        self.__init__(n = self._n,
+                      data_size_init = self._data_size_init if data_size_init is None else data_size_init,
+                      time_init = self._time_init if time_init is None else time_init,
+        )
+
+    
+    def update(self, data_size: int, time: float):
+        """
+        更新数据
+        data_size为某个时间点对应的总下载数据的大小，speed将保持和这里输入一样的单位
+        time为data_size对应的时间点
+        """
+
+        # 删除掉最后一个元素，在头部插入新元素
+        self._data.pop()
+        self._data.insert(0, (data_size, time))
+
+    def speed(self) -> Tuple[float, float]:
+        """
+        根据n个记录点和初始点，计算瞬时和平均下载速度
+        返回每秒大小，单位为输入update的单位
+
+        返回一个元组，第一个元素为瞬时速度，第二个元素为平均速度
+        """
+
+        data_size_list = [ data_size for data_size, _ in self._data ]
+        time_list = [ time for _, time in self._data ]
+
+        self._instant_speed = ( max(data_size_list) - min(data_size_list) ) / ( max(time_list) - min(time_list) )
+        self._average_speed = ( max(data_size_list) - self._data_size_init ) / ( max(time_list) - self._time_init )
+        return self._instant_speed, self._average_speed
+
 # 协程池调度器
 async def launch_executor(files_df,
               download_dir: str,
@@ -341,11 +497,19 @@ async def launch_executor(files_df,
     duplicate_download_number = 0
     error_download_number = 0
 
+    # 用于统计下载速度，其采用平均算法，因为有max_workers个并发，所以需要对max_workers个数据取平均
+    download_speed = DownloadSpeed( max_workers )
+
     try:
+        # 注意，这个time_init是第一个任务开始时候的时间戳，所以这个set_init应该传入开始瞬间的time.time()
+        download_speed.set_init( time_init=time.time() )
+
         # 等待结果
-        for task in tqdm( asyncio.as_completed(tasks_list), total=all_download_number ):
+        download_pbar = tqdm( asyncio.as_completed(tasks_list), total=all_download_number )
+        total_download_size = 0
+        for task in download_pbar:
             try:
-                res = await task  # 读取已经完成的结果,不会阻塞
+                res = await task  # 读取已经完成的结果,不会阻塞其他协程，但是本协程会同步阻塞
                 if res == 0:
                     error_download_number += 1
                 elif res == 1:
@@ -355,6 +519,18 @@ async def launch_executor(files_df,
                 else:
                     error_download_number += 1
                     logging.error(f"任务 {task} 返回状态异常, result: {res}")
+                # 更新下载速度
+                total_download_size += res.size  # 总下载量
+                download_speed.update(total_download_size, res.end_time)  # 每个时间点对应的累计下载量
+                instant_speed, average_speed = download_speed.speed()  # 计算瞬时和平均下载速度
+
+                # 转为MB单位
+                instant_speed_mb = instant_speed/1024/1024
+                average_speed_mb = average_speed/1024/1024
+                total_download_size_mb = total_download_size/1024/1024
+
+                download_pbar.set_description(f"当前: {instant_speed_mb:.2f}MB/s，平均: {average_speed_mb:.2f}MB/s，总量: {total_download_size_mb:.2f}MB")
+
             except Exception as e:
                 error_download_number += 1
                 logging.error(f"任务 {task} 返回状态异常, error: {e}")

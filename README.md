@@ -55,13 +55,20 @@ pip install -r requirements.txt
 
 ## Change History
 如果你不会使用git命令，可以运行`update.ps1`完成更新
-### 8 Jun.2023 2023/06/
+### 18 Jun.2023 2023/06/18
+new:
+ - 增加了显示下载速度的功能
+ - 基础类`class Downloader`的`.download()`方法输出类型已更改，现在会输出一个`class DownloadResult`的实例
+   - 因为实现了`__eq__`方法，所以仍然可以用`Downloader.download() == 1`等判断下载是否成功
+   - 具体请看[download_images_coroutine.py](download_images_coroutine.py)中的`class DownloadResult`定义
+
+### 8 Jun.2023 2023/06/08
 **新增了pillow库的要求，请重新运行`install.ps1`更新依赖**
 
 new:
  - 增加检查下载目录中错误图片的功能[1#issue](https://github.com/WSH032/Gelbooru-API-Downloader/issues/1)
    - 下载时候的使用方法请看[run_download_images_coroutine.ps1](run_download_images_coroutine.ps1)
-   - 你也做为单独的工具脚本使用，请看[utils\run_check_images.ps1](utils\run_check_images.ps1)
+   - 你也做为单独的工具脚本使用，请看[utils/run_check_images.ps1](utils/run_check_images.ps1)
    - API方式
       ```python
       await Scrape_images(*arg,**kwargs,
@@ -161,10 +168,15 @@ file_url: str  为下载直连，访问头是httpx的默认头
 file_name: str  指定下载名字，如果不提供，则自动取file_url的basename
 tags: str  下载时会自动新建同名txt，里面写入内容为tags，如果不提供则不会新建txt
 md5: str  下载时，如果存在同名文件，则会将文件与提供的md5进行对比判断是否重复，如果不提供则不校验
-"""
 
-# 下载失败就返回0； 下载成功返回1； 已有重复文件返回2
-# （无论是否有重复有文件，只要提供了tags都会被重写一次）
+返回一个DownloadResult对象，记录下载结果
+（无论是否有重复有文件，tags都会被重写一次）
+下载结果：
+    下载失败就返回0
+    下载成功返回1
+    已有重复文件返回2
+    遇到异常会引发一个Exception from e
+"""
 ```
 
 ### `async def launch_executor`
