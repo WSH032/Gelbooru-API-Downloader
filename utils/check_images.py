@@ -2,7 +2,7 @@ from SearchImagesTags import SearchImagesTags
 import os
 from PIL import Image, ImageFile
 import concurrent.futures
-from typing import  Tuple, List, Dict, Any, Callable, Union
+from typing import  Tuple, List, Union
 import argparse
 import logging
 from tqdm import tqdm

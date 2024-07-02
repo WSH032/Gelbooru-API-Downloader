@@ -19,7 +19,7 @@ import pandas as pd
 from urllib.parse import urlencode
 import math
 import argparse
-from typing import List, Tuple, Dict, Any, Union, Callable, Optional
+from typing import Tuple, Union, Optional
 import time
 
 ##############################
