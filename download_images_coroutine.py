@@ -25,6 +25,18 @@ from typing_extensions import Annotated
 
 from utils.check_images import check_images
 
+__all__ = (
+    "BASE_URL",
+    "BASE_URL_PARAMS",
+    "DownloadResult",
+    "DownloadResultState",
+    "Downloader",
+    "GetAPI",
+    "launch_executor",
+    "scrape_images",
+)
+
+
 # see: https://gelbooru.com/index.php?page=wiki&s=view&id=18780
 BASE_URL = "https://gelbooru.com/index.php"
 BASE_URL_PARAMS = {
@@ -420,7 +432,7 @@ class GetAPI:
 
 ##############################
 # 计算下载速度，会被launch_executor使用
-class DownloadSpeed:
+class _DownloadSpeed:
     """根据n个记录点和初始点，计算瞬时和平均下载速度"""
 
     def __init__(
@@ -554,7 +566,7 @@ async def launch_executor(
     error_download_number = 0
 
     # 用于统计下载速度，其采用平均算法，因为有max_workers个并发，所以需要对max_workers个数据取平均
-    download_speed = DownloadSpeed(max_workers)
+    download_speed = _DownloadSpeed(max_workers)
 
     try:
         # 注意，这个time_init是第一个任务开始时候的时间戳，所以这个set_init应该传入开始瞬间的time.time()
