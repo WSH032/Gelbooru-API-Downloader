@@ -19,8 +19,9 @@ from urllib.parse import urlencode
 import aiofiles
 import aiofiles.os
 import httpx
-import pandas as pd
+from pydantic import BaseModel, ConfigDict, Field
 from tqdm import tqdm
+from typing_extensions import Annotated
 
 from utils.check_images import check_images
 
@@ -321,16 +322,39 @@ class Downloader:
 ##############################
 
 
-def _get_df(response: httpx.Response) -> Optional[pd.DataFrame]:
+class _Attributes(BaseModel):
+    limit: Annotated[int, Field(ge=1, le=100)]
+    offset: Annotated[int, Field(ge=0)]
+    count: Annotated[int, Field(ge=0)]
+
+
+class _Post(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    md5: str
+    file_url: str
+    tags: str
+    image: str
+
+
+class _GelbooruApiJson(BaseModel):
+    """Gelbooru API返回的json格式"""
+
+    attributes: Annotated[_Attributes, Field(alias="@attributes")]
+    post: List[_Post]
+
+
+def _get_api_post_data(response: httpx.Response) -> Optional[List[_Post]]:
     """从响应中获取post信息"""
     response.raise_for_status()  # 检查是否是200成功访问,不是就引发异常
     # 读取JSON格式的返回信息，只取其中post部分
-    response_dict = response.json()
+    api_data = _GelbooruApiJson.model_validate_json(response.text)
+    post_api_date = api_data.post
 
-    df = pd.DataFrame(response_dict.get("post", []))  # noqa: PD901
-    # 只有确实获取到了信息，才返回一个非空的pd.Dataframe，否则返回None
-    if not df.empty:
-        return df
+    # 只有确实获取到了信息，才返回数据，否则返回None
+    if post_api_date:
+        return post_api_date
     else:
         return None
 
@@ -361,7 +385,7 @@ class GetAPI:
         tags: str,
         limit: int = 100,
         pid: int = 0,
-    ) -> Optional[pd.DataFrame]:
+    ) -> Optional[List[_Post]]:
         """根据tags获取gelbooru的API信息
 
         Args:
@@ -370,7 +394,7 @@ class GetAPI:
             pid: 查询的页数索引. Defaults to 0.
 
         Returns:
-            - 如果成功获取图片信息，就返回一个pandas.DataFrame
+            - 如果成功获取图片信息，就返回Api中所包含的post图片信息
             - 如果不成功就返回None
         """
         api_param: Dict[str, Any] = {
@@ -388,7 +412,7 @@ class GetAPI:
             response = await async_client.get(
                 base_url, params=base_url_params | api_param
             )
-            return _get_df(response)
+            return _get_api_post_data(response)
         except Exception as e:
             logging.error(f"{e}")
             return None
@@ -481,16 +505,16 @@ def _byte_to_mb(byte: Union[int, float]) -> float:
 
 # 协程池调度器
 async def launch_executor(
-    files_df: pd.DataFrame,
+    post_data: List[_Post],
     download_dir: str,
     max_workers: int,
     timeout: Optional[Union[int, float]],
     async_client: httpx.AsyncClient,
 ) -> "_DownloadInfoTuple":
-    """并发下载，将files_df的每一行分给一个协程.
+    """并发下载，将 `post_data` 的每一份分给一个协程.
 
     Args:
-        files_df: 包含了下载信息的 `panda.DataFrame`.
+        post_data: 下载信息.
         download_dir: 下载目录.
         max_workers: 并发数.
         timeout: 下载超时时间，单位为秒.
@@ -513,18 +537,18 @@ async def launch_executor(
 
     # 创建下载task
     tasks_list: List[Task[DownloadResult]] = []
-    for row in files_df.itertuples():
+    for post in post_data:
         coroutine = downloader.download(
             download_dir,
-            row.file_url,
-            file_name=row.image,
-            tags=row.tags,
-            md5=row.md5,
+            post.file_url,
+            file_name=post.image,
+            tags=post.tags,
+            md5=post.md5,
         )
         tasks_list.append(asyncio.create_task(coroutine))
 
     # 用于统计下载计数
-    all_download_number = len(files_df)
+    all_download_number = len(post_data)
     successful_download_number = 0
     duplicate_download_number = 0
     error_download_number = 0
@@ -597,7 +621,7 @@ async def launch_executor(
         return download_info
 
     except Exception as e:
-        logging.error(f"下载 {files_df.head()} 时发生错误, error: {e}")
+        logging.error(f"下载 {post_data[0:5]} 时发生错误, error: {e}")
         # 发生异常时，取消全部未完成的下载任务
         for task in tasks_list:
             task.cancel()
@@ -713,15 +737,13 @@ async def scrape_images(
             BASE_URL, params=BASE_URL_PARAMS | {"tags": tags}
         )
         test_response.raise_for_status()
-        test_response_dict = test_response.json()
 
-        assert isinstance(test_response_dict, dict), "无法获取正确的json格式"
-        # 尝试从相应中获取数量
         try:
-            count: int = test_response_dict["@attributes"]["count"]
-        except KeyError as e:
+            test_api_data = _GelbooruApiJson.model_validate_json(test_response.text)
+        except Exception as e:
             raise AssertionError("无法获取正确的json格式") from e
 
+        count = test_api_data.attributes.count
         if count == 0:
             print("未发现任何图像，检查下输入的tags")
             return
@@ -746,7 +768,7 @@ async def scrape_images(
         # 下载计数器
         download_info_counter = _DownloadInfoCounter()
 
-        # 实例化GetAPI类用于查询API获取pandas.df， 提供先前的async_client， 将在此函数执行完后才关闭
+        # 实例化GetAPI类用于查询API， 提供先前的async_client， 将在此函数执行完后才关闭
         get_api = GetAPI(
             base_url=BASE_URL,
             base_url_params=BASE_URL_PARAMS,
@@ -762,18 +784,19 @@ async def scrape_images(
             tqdm.write(f"{divide_str}\n第 {i+1} / {download_count} 轮下载进行中:")
 
             # 查询API
-            files_df = await get_api.get_api(tags, limit=limit, pid=i)
+            api_post_data = await get_api.get_api(tags, limit=limit, pid=i)
 
-            if files_df is not None:
-                files_df["tags"] = files_df["tags"].apply(
-                    _process_tags,
-                    add_comma=add_comma,
-                    remove_underscore=remove_underscore,
-                    use_escape=use_escape,
-                )
+            if api_post_data is not None:
+                for post in api_post_data:
+                    post.tags = _process_tags(
+                        post.tags,
+                        add_comma=add_comma,
+                        remove_underscore=remove_underscore,
+                        use_escape=use_escape,
+                    )
 
                 res = await launch_executor(
-                    files_df,
+                    api_post_data,
                     download_dir,
                     max_workers=max_workers,
                     timeout=timeout,
@@ -793,7 +816,7 @@ async def scrape_images(
             check_images_mode = None
         # 是否删除下载失败的图片
         if check_images_mode is not None:
-            delete_list = await asyncio.to_thread(
+            delete_list = await asyncio.to_thread(  # noqa: F841
                 check_images,
                 download_dir,
                 max_workers=None,
