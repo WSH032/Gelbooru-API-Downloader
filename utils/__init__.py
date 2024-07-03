@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 __corrent_path__ = os.path.dirname(os.path.abspath(__file__))
 

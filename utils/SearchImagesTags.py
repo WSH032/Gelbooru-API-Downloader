@@ -1,14 +1,11 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun May  7 17:48:40 2023
+"""Created on Sun May  7 17:48:40 2023
 
 @author: WSH
 """
 
 # 导入所需的库
-import os
 import logging
-
+import os
 
 IMAGE_EXTENSION = (
     ".apng",
@@ -82,7 +79,7 @@ IMAGE_EXTENSION = (
 )
 
 
-class SearchImagesTags(object):
+class SearchImagesTags:
     def __init__(self, search_dir: str, tag_file_ext: str = ".txt"):
         self.search_dir = search_dir  # 要搜索的路径
         self.tag_files_ext = tag_file_ext  # 对应的tags文件的扩展名
@@ -105,7 +102,6 @@ class SearchImagesTags(object):
 
     def image_files(self) -> list[str]:
         """搜索目录下已注册的扩展名的所有图片，返回一个带扩展，不带路径的名字列表"""
-
         # 获取该目录下所有的图片文件名
         image_files_names_list = [
             f
@@ -117,7 +113,6 @@ class SearchImagesTags(object):
 
     def tag_files(self) -> list[str]:
         """搜索目录下对应图片名字的txt文件，返回一个仅仅改变扩展名为txt的列表"""
-
         # 读取图片列表
         images_names_list = self.image_files()
 
@@ -129,12 +124,10 @@ class SearchImagesTags(object):
         return tag_files_names_list
 
     def tag_content(self, error_then_tag_is: str = "") -> list[str]:
-        """
-        读取目录下对应名字的txt文件内容，返回内容str为元素的列表
+        """读取目录下对应名字的txt文件内容，返回内容str为元素的列表
 
         error_then_tag_is为无法读取内容时候替代的内容
         """
-
         # 读取tas文件列表
         tag_files_names_list = self.tag_files()
 

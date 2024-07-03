@@ -1,18 +1,18 @@
-from SearchImagesTags import SearchImagesTags
-import os
-from PIL import Image, ImageFile
-import concurrent.futures
-from typing import Tuple, List, Union
 import argparse
+import concurrent.futures
 import logging
+import os
+from typing import List, Tuple, Union
+
+from PIL import Image, ImageFile
+from SearchImagesTags import SearchImagesTags
 from tqdm import tqdm
 
 
 def delete_files(
     files_list: List[str],
 ) -> Tuple[List[Tuple[str, Exception]], List[str]]:
-    """
-    删除文件列表中的所有文件
+    """删除文件列表中的所有文件
     返回tuple(删除失败的文件路径和错误元组列表, 删除成功的文件路径列表)
     """
     failed_delete_files_list = []
@@ -41,8 +41,7 @@ def fix_images(
     images_list: List[str],
     max_workers: Union[int, None] = None,
 ) -> Tuple[List[Tuple[str, Exception]], List[str]]:
-    """
-    修复图片列表中的所有图片
+    """修复图片列表中的所有图片
 
     max_workers: 最大线程数
     debug: 是否打印debug信息
@@ -76,15 +75,14 @@ def fix_images(
 
 
 def try_read(image_path: str) -> Union[None, Tuple[str, Exception]]:
-    """
-    尝试读取图片，如果成功返回None，否则返回(图片名字, 错误信息)
+    """尝试读取图片，如果成功返回None，否则返回(图片名字, 错误信息)
     注意，返回的是不带路径的图片名字！
     """
     with Image.open(image_path) as image:
         try:
             image.load()
             return None
-        except (IOError, SyntaxError) as e:
+        except (OSError, SyntaxError) as e:
             return (os.path.basename(image_path), e)
 
 
@@ -94,8 +92,7 @@ def check_images(
     debug: bool = False,
     max_workers: Union[int, None] = None,
 ) -> Tuple[List[Tuple[str, Exception]], List[str]]:
-    """
-    检查时候能正确读取images_dir目录下的图片
+    """检查时候能正确读取images_dir目录下的图片
 
     iamges_dir: 要检查的目录
     mode: 0表示只检查，1表示检查并尝试修复，2表示检查并删除无法读取的图片
@@ -104,7 +101,6 @@ def check_images(
 
     返回tuple(无法读取的图片路径和错误元组列表, 修复成功的图片路径列表)
     """
-
     # 获取该目录下所有的图片文件名
     search = SearchImagesTags(images_dir)
     image_files_name_list = search.image_files()

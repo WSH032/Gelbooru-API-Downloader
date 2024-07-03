@@ -1,29 +1,28 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri May 19 23:26:50 2023
+"""Created on Fri May 19 23:26:50 2023
 
 @author: WSH
 """
 
-from utils.check_images import check_images
-import httpx
-import aiofiles
-import aiofiles.os
+import argparse
+import asyncio
 import hashlib
 import logging
-import asyncio
-from asyncio import Task
-import os
-from tqdm import tqdm
-import pandas as pd
-from urllib.parse import urlencode
 import math
-import argparse
-from typing import Tuple, Union, Optional, Dict, NamedTuple, List, Literal, Any
+import os
 import time
-from enum import IntEnum
+from asyncio import Task
 from collections import deque
+from enum import IntEnum
+from typing import Any, Dict, List, Literal, NamedTuple, Optional, Tuple, Union
+from urllib.parse import urlencode
 
+import aiofiles
+import aiofiles.os
+import httpx
+import pandas as pd
+from tqdm import tqdm
+
+from utils.check_images import check_images
 
 # see: https://gelbooru.com/index.php?page=wiki&s=view&id=18780
 BASE_URL = "https://gelbooru.com/index.php"
@@ -84,7 +83,7 @@ class DownloadResult(NamedTuple):
         """为了向前兼容，方便用 if DownloadResult() 等判断下载结果"""
         return bool(self.state)
 
-    def __str__(self):
+    def __str__(self):  # noqa: D105
         return f"\
 DownloadResult(state={self.state}, \
 path={self.path}, \
@@ -94,7 +93,7 @@ size={self.size}, \
 tags={self.tags}, \
 md5={self.md5})"
 
-    def __repr__(self):
+    def __repr__(self):  # noqa: D105
         return self.__str__()
 
 
@@ -118,7 +117,6 @@ async def _get_response_to_file(
     Returns:
         成功下载返回1， 出现异常返回0
     """
-
     try:
         # 进行连接
         async with async_client.stream("GET", file_url, timeout=timeout) as r:
@@ -136,7 +134,7 @@ async def _get_response_to_file(
         return 0
 
 
-async def _tags2txt(tags, txt_path) -> Literal[0, 1]:
+async def _tags2txt(tags: str, txt_path: str) -> Literal[0, 1]:
     """异步地将 `tags` 的内容写入 `txt_path`
 
     Args:
@@ -172,6 +170,8 @@ def _check_download_state(
 
 
 class Downloader:
+    """下载器"""
+
     def __init__(
         self,
         timeout: Optional[Union[int, float]],
@@ -185,21 +185,18 @@ class Downloader:
             semaphore: 用于控制并发数的信号量
             async_client: 用于发送下载请求的 `httpx.AsyncClient`
         """
-
         self.timeout = timeout
         self.semaphore = semaphore
         self.async_client = async_client
 
     @staticmethod
     async def cul_md5(file_path: str):
-        """
-        计算文件的 MD5 哈希值
+        """计算文件的 MD5 哈希值
 
         file_path为需要计算的文件路径
 
         只有成功计算了哈希值才返回，否则就返回None
         """
-
         try:
             async with aiofiles.open(file_path, "rb") as f:
                 md5_hash = hashlib.md5()
@@ -213,7 +210,7 @@ class Downloader:
             logging.error(f"检验 {file_path} md5时发生错误 error: {e}")
             return None
 
-    async def download(
+    async def download(  # noqa: C901, PLR0912
         self,
         download_dir: str,
         file_url: str,
@@ -238,7 +235,6 @@ class Downloader:
         Returns:
             返回一个DownloadResult对象，记录下载结果
         """
-
         # 如果没提供文件名，就用url中的basename
         if file_name is None:
             file_name = os.path.basename(file_url)
@@ -254,9 +250,11 @@ class Downloader:
         is_duplicate = False
         if md5 is not None:
             try:
-                if await aiofiles.os.path.exists(file_path):
-                    if await Downloader.cul_md5(file_path) == md5:
-                        is_duplicate = True
+                if (
+                    await aiofiles.os.path.exists(file_path)
+                    and await Downloader.cul_md5(file_path) == md5
+                ):
+                    is_duplicate = True
             except Exception as e:
                 logging.error(f"校验md5时发生错误。 error : {e}")
         # 如果传入了semaphore，则根据其限制下载并发数
@@ -329,7 +327,7 @@ def _get_df(response: httpx.Response) -> Optional[pd.DataFrame]:
     # 读取JSON格式的返回信息，只取其中post部分
     response_dict = response.json()
 
-    df = pd.DataFrame(response_dict.get("post", []))
+    df = pd.DataFrame(response_dict.get("post", []))  # noqa: PD901
     # 只有确实获取到了信息，才返回一个非空的pd.Dataframe，否则返回None
     if not df.empty:
         return df
@@ -339,6 +337,8 @@ def _get_df(response: httpx.Response) -> Optional[pd.DataFrame]:
 
 # API类 GetAPI
 class GetAPI:
+    """API查询器"""
+
     def __init__(
         self,
         async_client: httpx.AsyncClient,
@@ -352,7 +352,6 @@ class GetAPI:
             base_url: 访问的域名
             base_url_params: 访问的API url参数
         """
-
         self.base_url = base_url
         self.base_url_params = base_url_params
         self.async_client = async_client
@@ -374,7 +373,6 @@ class GetAPI:
             - 如果成功获取图片信息，就返回一个pandas.DataFrame
             - 如果不成功就返回None
         """
-
         api_param: Dict[str, Any] = {
             "limit": limit,
             "tags": tags,
@@ -431,15 +429,13 @@ class DownloadSpeed:
         self,
         data_size_init: Optional[int] = None,
         time_init: Optional[float] = None,
-    ):
-        """
-        将数据状态重置为初始
+    ) -> None:
+        """将数据状态重置为初始
 
         如有需要，可以改变以下参数：
         data_size_init为需要修改的开始之前下载量
         time_init为需要修改的开始时间戳
         """
-
         # 调用__init__重新初始化
         # 如果没有传入参数，就使用原来的参数
         self.__init__(
@@ -450,24 +446,20 @@ class DownloadSpeed:
             time_init=self._time_init if time_init is None else time_init,
         )
 
-    def update(self, data_size: int, time: float):
-        """
-        更新数据
+    def update(self, data_size: int, time: float) -> None:
+        """更新数据
+
         data_size为某个时间点对应的总下载数据的大小，speed将保持和这里输入一样的单位
         time为data_size对应的时间点
         """
-
         # 在头部插入新元素, 因为deque有长度限制，所以会自动顶出最后一个元素
         self._data.appendleft((data_size, time))
 
     def speed(self) -> Tuple[float, float]:
-        """
-        根据n个记录点和初始点，计算瞬时和平均下载速度
-        返回每秒大小，单位为输入update的单位
+        """根据n个记录点和初始点，计算瞬时和平均下载速度，返回每秒大小，单位为输入update的单位.
 
         返回一个元组，第一个元素为瞬时速度，第二个元素为平均速度
         """
-
         data_size_list, time_list = zip(*self._data)
         data_size_list = list(data_size_list)
         time_list = list(time_list)
@@ -512,7 +504,6 @@ async def launch_executor(
     Returns:
         成功会返回一个元组，按顺序为：总下载任务、 成功下载数、 存在的重复数、 下载失败数
     """
-
     # 实例化下载器
     downloader = Downloader(
         timeout=timeout,
@@ -610,7 +601,7 @@ async def launch_executor(
         # 发生异常时，取消全部未完成的下载任务
         for task in tasks_list:
             task.cancel()
-        raise e
+        raise
 
 
 ##############################
@@ -634,12 +625,7 @@ class _DownloadInfoCounter:
         self.error = 0
 
     def update(self, download_info_tuple: _DownloadInfoTuple):
-        """
-        输入一个四长度的元组，按顺序复制给
-            全部任务、成功、重复、失败
-
-        无返回值
-        """
+        """更新下载计数"""
         if download_info_tuple:
             self.all += download_info_tuple.all
             self.success += download_info_tuple.success
@@ -716,7 +702,6 @@ async def scrape_images(
     Returns:
         None
     """
-
     # 尝试用ipython展示markdown连接
     show_url = BASE_URL + "?" + urlencode(SHOW_URL_PARAMS | {"tags": tags})
     print(f"打开此连接检查图片是否正确: {show_url}")

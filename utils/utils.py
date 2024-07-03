@@ -1,11 +1,10 @@
 import asyncio
 import inspect
-from typing import Coroutine, Union, Tuple
+from typing import Coroutine, Tuple, Union
 
 
 def create_task_index(*args, index: Union[int, None] = None, **kwargs) -> asyncio.Task:
-    """
-    在3.9<= python <=3.11中编写
+    """在3.9<= python <=3.11中编写
     与asyncio.create_task具有相同的接口,以及行为
     但是增加了一个index参数，用于标记协程对象的索引
 
@@ -15,8 +14,7 @@ def create_task_index(*args, index: Union[int, None] = None, **kwargs) -> asynci
     """
 
     async def make_coro_index(coro: Coroutine, index: Union[int, None] = None):
-        """
-        包装协程对象，为协程对象的返回结果增加一个可选择的索引
+        """包装协程对象，为协程对象的返回结果增加一个可选择的索引
 
         返回一个元组
         第一个元素为原协程对象的返回结果，第二个元素为index
