@@ -1,0 +1,78 @@
+[tool.ruff.format]
+docstring-code-format = true
+
+# https://docs.astral.sh/ruff/rules/
+[tool.ruff.lint]
+preview = true
+explicit-preview-rules = true
+# we use `extend-select` to enable preview rules
+extend-select = ["RUF022"] # unsorted-dunder-all
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "C4",     # flake8-comprehensions
+    "B",      # flake8-bugbear
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "D",      # pydocstyle
+    "SIM",    # flake8-simplify
+    "RUF",    # unused-noqa
+    "Q",      # flake8-quotes
+    "C90",    # McCabe complexity
+    "ANN001", # missing-type-function-argument
+    "ANN201", # missing-return-type-undocumented-public-function
+    "ASYNC",  # flake8-async
+    "A",      # flake8-builtins
+    "COM",    # flake8-commas
+    "ISC",    # flake8-implicit-str-concat
+    "ICN001", # unconventional-import-alias
+    "PIE",    # flake8-pie
+    "PT",     # flake8-pytest-style
+    "INT",    # flake8-gettext
+    "ARG",    # flake8-unused-arguments
+    "PGH004", # blanket-noqa
+    "TRY201", # Use raise without specifying exception name
+    "NPY",    # NumPy-specific rules
+    "PD",     # pandas-vet
+    "PERF",   # Perflint
+    "PL",     # Pylint
+    "TID252", # Relative imports from parent modules are banned
+]
+ignore = [
+    "E501",    # line too long, handled by black
+    "COM812",  # missing-trailing-comma
+    "PERF203", # try-except within a loop incurs performance overhead
+    "PLR2004", # magic-value-comparison
+    "PLR5501", # collapsible-else-if
+    "PLW0120", # useless-else-on-loop
+    "PLR0911", # too-many-return-statements
+    "PLR0913", # too-many-arguments
+    "PLC0205", # single-string-slots
+    "PLW0603", # global-statement
+    "PLC1901", # compare-to-empty-string
+    "PLR0904", # too-many-public-methods
+    "RUF002",  # ambiguous-unicode-character-docstring
+    "RUF003",  # ambiguous-unicode-character-comment
+    "SIM105",  # suppressible-exception # slower
+    "ISC001",
+    # "D418",    # Function decorated with `@overload` shouldn't contain a docstring
+    # "SIM108",  # if-else-block-instead-of-if-exp
+
+    "D415",
+    "RUF001",
+]
+
+# https://docs.astral.sh/ruff/settings/#pydocstyle
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+# [tool.ruff.flake8-tidy-imports]
+# ban-relative-imports = "all"
+
+
+# https://microsoft.github.io/pyright/#/configuration
+[tool.pyright]
+typeCheckingMode = "standard"
+pythonVersion = "3.9"

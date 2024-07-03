@@ -1,10 +1,8 @@
 # for all
-tqdm
-pandas
-
+tqdm == 4.*
+typing-extensions == 4.*
+pydantic == 2.*
 # for download
-httpx
-aiofiles
-
+httpx == 0.27.*
 # for check_images
-pillow
+pillow == 10.*
