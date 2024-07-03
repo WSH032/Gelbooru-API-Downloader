@@ -8,3 +8,5 @@ aiofiles
 
 # for check_images
 pillow
+
+typing-extensions
