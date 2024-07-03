@@ -58,7 +58,7 @@ pip install -r requirements.txt
 >
 > 中国用户访问gelbooru请自行使用系统代理.
 >
-> 或者通过 `$env:HTTPS_PROXY = http://127.0.0.1:7890` 的方式通过环境变量 `HTTPS_PROXY`指定代理服务器.
+> 或者通过 `$env:HTTPS_PROXY = http://127.0.0.1:7890` 的方式，以环境变量 `HTTPS_PROXY`指定代理服务器.
 
 <!-- 此注释是为了避免markdown lint报错 -->
 
