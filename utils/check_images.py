@@ -1,19 +1,29 @@
+"""用于检查图片是否存在问题，并可以修复被截断地图片."""
+
 import argparse
 import concurrent.futures
 import logging
 import os
-from typing import List, Tuple, Union
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Generator, List, Tuple, Union
 
 from PIL import Image, ImageFile
-from SearchImagesTags import SearchImagesTags
 from tqdm import tqdm
+
+from utils._tools import search_img_files
 
 
 def delete_files(
     files_list: List[str],
 ) -> Tuple[List[Tuple[str, Exception]], List[str]]:
-    """删除文件列表中的所有文件
-    返回tuple(删除失败的文件路径和错误元组列表, 删除成功的文件路径列表)
+    """删除文件列表中的所有文件.
+
+    Args:
+        files_list: 要删除的文件列表
+
+    Returns:
+        返回tuple(删除失败的文件路径和错误元组列表, 删除成功的文件路径列表)
     """
     failed_delete_files_list = []
     success_delete_files_list = []
@@ -27,7 +37,7 @@ def delete_files(
     return failed_delete_files_list, success_delete_files_list
 
 
-def try_fix(image_path: str) -> Union[None, Tuple[str, Exception]]:
+def _try_fix(image_path: str) -> Union[None, Tuple[str, Exception]]:
     """尝试修复图片，修复成功返回None，修复失败返回tuple(图片路径, 错误信息)"""
     try:
         with Image.open(image_path) as image:
@@ -37,26 +47,38 @@ def try_fix(image_path: str) -> Union[None, Tuple[str, Exception]]:
         return (image_path, e)
 
 
+@contextmanager
+def _allow_truncated_imgs_temporarily(is_allowed: bool) -> Generator[None]:
+    """临时允许截断的图片"""
+    ori_set = ImageFile.LOAD_TRUNCATED_IMAGES
+    ImageFile.LOAD_TRUNCATED_IMAGES = is_allowed
+    yield
+    ImageFile.LOAD_TRUNCATED_IMAGES = ori_set
+
+
 def fix_images(
     images_list: List[str],
     max_workers: Union[int, None] = None,
 ) -> Tuple[List[Tuple[str, Exception]], List[str]]:
-    """修复图片列表中的所有图片
+    """修复图片列表中的所有图片.
 
-    max_workers: 最大线程数
-    debug: 是否打印debug信息
+    Note: 这个函数不是线程安全的，会修改 `PIL.ImageFile.LOAD_TRUNCATED_IMAGES` 的值.
 
-    返回tuple(修复失败的文件路径和错误元组列表, 删除成功的文件路径列表)
+    Args:
+        images_list: 要修复的图片列表
+        max_workers: 用于修复的并发线程数
+
+    Returns:
+        返回tuple(修复失败的文件路径和错误元组列表, 删除成功的文件路径列表)
     """
-    ori_set = ImageFile.LOAD_TRUNCATED_IMAGES  # 记录原来的设置，函数结束前恢复
-    ImageFile.LOAD_TRUNCATED_IMAGES = True
-
-    """应当考虑复用主线程中创建的线程池，而不是在这个函数中新建一个进程池，但是这样需要加更多逻辑，我有点懒得弄现在"""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures_list = []
-        # 提交任务
-        for image_path in images_list:
-            futures_list.append(executor.submit(try_fix, image_path))
+    # 应当考虑复用主线程中创建的线程池，而不是在这个函数中新建一个进程池，
+    # 但是这样需要加更多逻辑，我有点懒得弄现在
+    with _allow_truncated_imgs_temporarily(True), concurrent.futures.ThreadPoolExecutor(
+        max_workers=max_workers
+    ) as executor:
+        futures_list = [
+            executor.submit(_try_fix, image_path) for image_path in images_list
+        ]
 
         # 获取结果
         failed_fix_images_list = []
@@ -70,13 +92,18 @@ def fix_images(
                 # 修复失败就记录tuple(图片绝对路径, 错误信息)
                 failed_fix_images_list.append(result)
 
-    ImageFile.LOAD_TRUNCATED_IMAGES = ori_set
     return failed_fix_images_list, success_fix_images_list
 
 
-def try_read(image_path: str) -> Union[None, Tuple[str, Exception]]:
-    """尝试读取图片，如果成功返回None，否则返回(图片名字, 错误信息)
-    注意，返回的是不带路径的图片名字！
+def try_read(image_path: Path) -> Union[None, Tuple[str, Exception]]:
+    """尝试读取图片.
+
+    Args:
+        image_path: 图片路径
+
+    Returns:
+        如果成功返回None，否则返回(图片名字, 错误信息).
+        注意，返回的是不带路径的图片名字！
     """
     with Image.open(image_path) as image:
         try:
@@ -86,7 +113,7 @@ def try_read(image_path: str) -> Union[None, Tuple[str, Exception]]:
             return (os.path.basename(image_path), e)
 
 
-def check_images(
+def check_images(  # noqa: C901, PLR0912
     images_dir: str,
     mode: int = 0,
     debug: bool = False,
@@ -101,19 +128,15 @@ def check_images(
 
     返回tuple(无法读取的图片路径和错误元组列表, 修复成功的图片路径列表)
     """
-    # 获取该目录下所有的图片文件名
-    search = SearchImagesTags(images_dir)
-    image_files_name_list = search.image_files()
-
-    ori_set = ImageFile.LOAD_TRUNCATED_IMAGES  # 记录原来的设置，函数结束前恢复
-    ImageFile.LOAD_TRUNCATED_IMAGES = False  # 需要设置为False，否则无法检测到截断
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures_list = []
-        for name in image_files_name_list:
-            image_path = os.path.join(images_dir, name)
-            # 多线程执行
-            futures_list.append(executor.submit(try_read, image_path))
+    with _allow_truncated_imgs_temporarily(
+        False
+    ), concurrent.futures.ThreadPoolExecutor(
+        max_workers=max_workers
+    ) as executor:  # 需要设置为False，否则无法检测到截断
+        futures_list = [
+            executor.submit(try_read, image_path)
+            for image_path in search_img_files(Path(images_dir))
+        ]
 
         # 获取结果
         error_image_files_list = []
@@ -125,64 +148,62 @@ def check_images(
             result = future.result()
             if result is not None:
                 error_image_files_list.append(result)
-        print(
-            f"检查了{len(image_files_name_list)}张图片，其中{len(error_image_files_list)}张无法读取"
+
+    print(
+        f"检查了{len(futures_list)}张图片，其中{len(error_image_files_list)}张无法读取"
+    )
+
+    abs_path_error_list = [
+        (os.path.join(images_dir, name), e) for name, e in error_image_files_list
+    ]
+
+    if mode == 0:
+        if debug:
+            for abs_path, e in abs_path_error_list:
+                # 显示详细信息
+                print(f"{abs_path} 无法读取, error: {e}")
+        return abs_path_error_list, []
+
+    elif mode == 1:
+        # 尝试修复错误图片
+        images_abs_path_list = [abs_path for abs_path, e in abs_path_error_list]
+        failed_fix_images_list, success_fix_images_list = fix_images(
+            images_abs_path_list, max_workers=max_workers
         )
 
-        # 恢复原来的设置
-        ImageFile.LOAD_TRUNCATED_IMAGES = ori_set
+        if debug:
+            for abs_path in success_fix_images_list:
+                print(f"{abs_path} 修复成功")
+            for abs_path, e in failed_fix_images_list:
+                print(f"{abs_path} 修复失败, error: {e}")
+        print(
+            f"尝试修复图片共{len(images_abs_path_list)}张，成功修复{len(success_fix_images_list)}张，修复失败{len(failed_fix_images_list)}张"
+        )
 
-        abs_path_error_list = [
-            (os.path.join(images_dir, name), e) for name, e in error_image_files_list
+        return failed_fix_images_list, success_fix_images_list
+
+    elif mode == 2:
+        # 尝试删除错误图片
+        images_abs_path_list = [
+            os.path.join(images_dir, name) for name, e in error_image_files_list
         ]
+        failed_delete_images_list, success_delete_images_list = delete_files(
+            images_abs_path_list
+        )
 
-        if mode == 0:
-            if debug:
-                for abs_path, e in abs_path_error_list:
-                    # 显示详细信息
-                    print(f"{abs_path} 无法读取, error: {e}")
-            return abs_path_error_list, []
+        if debug:
+            for abs_path in success_delete_images_list:
+                print(f"{abs_path} 删除成功")
+            for abs_path, e in failed_delete_images_list:
+                print(f"{abs_path} 删除失败, error: {e}")
+        print(
+            f"尝试删除图片共{len(images_abs_path_list)}张，成功删除{len(success_delete_images_list)}张，删除失败{len(failed_delete_images_list)}张"
+        )
 
-        elif mode == 1:
-            # 尝试修复错误图片
-            images_abs_path_list = [abs_path for abs_path, e in abs_path_error_list]
-            failed_fix_images_list, success_fix_images_list = fix_images(
-                images_abs_path_list, max_workers=max_workers
-            )
+        return failed_delete_images_list, success_delete_images_list
 
-            if debug:
-                for abs_path in success_fix_images_list:
-                    print(f"{abs_path} 修复成功")
-                for abs_path, e in failed_fix_images_list:
-                    print(f"{abs_path} 修复失败, error: {e}")
-            print(
-                f"尝试修复图片共{len(images_abs_path_list)}张，成功修复{len(success_fix_images_list)}张，修复失败{len(failed_fix_images_list)}张"
-            )
-
-            return failed_fix_images_list, success_fix_images_list
-
-        elif mode == 2:
-            # 尝试删除错误图片
-            images_abs_path_list = [
-                os.path.join(images_dir, name) for name, e in error_image_files_list
-            ]
-            failed_delete_images_list, success_delete_images_list = delete_files(
-                images_abs_path_list
-            )
-
-            if debug:
-                for abs_path in success_delete_images_list:
-                    print(f"{abs_path} 删除成功")
-                for abs_path, e in failed_delete_images_list:
-                    print(f"{abs_path} 删除失败, error: {e}")
-            print(
-                f"尝试删除图片共{len(images_abs_path_list)}张，成功删除{len(success_delete_images_list)}张，删除失败{len(failed_delete_images_list)}张"
-            )
-
-            return failed_delete_images_list, success_delete_images_list
-
-        else:
-            raise ValueError("mode参数非法，只能为0,1,2中的一个")
+    else:
+        raise ValueError("mode参数非法，只能为0,1,2中的一个")
 
 
 if __name__ == "__main__":
